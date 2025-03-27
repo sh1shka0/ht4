@@ -23,9 +23,7 @@ token=os.getenv('TOKEN') #'7044459383:AAGE-K-UOkT-gZocdJ6tXGb4rk7VNYpH4BM'
 bot=telebot.TeleBot(token)
 
 tasks = defaultdict(dict)
-
 files = [int(f) for f in os.listdir('users/')]
-
 for i in files:
     with open('users/'+str(i)) as f:
         tasks[i]=json.load(f)
@@ -45,7 +43,6 @@ def new_markup(texts):
     for i in texts:
         markup.add(types.KeyboardButton(i))
     return markup
-
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
@@ -83,6 +80,7 @@ def task_priority(message, name, type_):
                          reply_markup=new_markup(['Отмена']))
     bot.register_next_step_handler(msg, task_deadline, name, type_, priority)
 
+#дедлайн можно не вводить, ввести дату и время или ввести только дату (время автоматически встанет на полдень)
 def task_deadline(message, name, type_, priority):
     deadline = message.text.lower()
     if deadline == 'Отмена':
@@ -90,8 +88,16 @@ def task_deadline(message, name, type_, priority):
         return
     if deadline != 'нет':
         time_temp=deadline.split()
-        time=[int(x) for x in time_temp[0].split('.')+time_temp[1].split(':')]
-        deadline = datetime(time[2], time[1], time[0], time[3], time[4]).timestamp()
+        try:
+            if len(time_temp) == 2:
+                time = [int(x) for x in time_temp[0].split('.') + time_temp[1].split(':')]
+                deadline = datetime(time[2], time[1], time[0], time[3], time[4]).timestamp()
+            elif len(time_temp) == 1:
+                time = [int(x) for x in time_temp[0].split('.')]
+                deadline = datetime(time[2], time[1], time[0], 12, 0).timestamp()
+        except:
+            bot.send_message(message.chat.id, "Неправильный формат даты", reply_markup=default_markup())
+            return
     tasks[message.chat.id][name] = {'type': type_, 'priority': priority,
                                     'deadline': deadline, 'deadline_done': False,
                                     'done': False}
@@ -116,7 +122,6 @@ def task_name_del(message):
         bot.send_message(message.chat.id, "Удалено", reply_markup=default_markup())
     except:
         bot.send_message(message.chat.id, "Такой задачи нет", reply_markup=default_markup())
-
 
 @bot.message_handler(func= lambda x:  x.text=='Отметить выполненным')
 def mark_task(message):
@@ -215,10 +220,6 @@ def deadline_thread():
 
 threading.Thread(target=deadline_thread, daemon=True).start()
 
-
-
 print(datetime.now().timestamp())
 
-
-
-bot.infinity_polling()
+bot.infinity_polling() #можно попробовать bot.polling() если не работает
