@@ -1,3 +1,8 @@
+"""для нормальной работы голосовых команд установить ffmpeg, следуя этому гайду:
+гайд: https://phoenixnap.com/kb/ffmpeg-windows и перезагрузить компьютер
+Токен следует записать в .env файл в виде: TOKEN='<токен>'
+Следует создать папки users и tmp в той же папке, что и этот файл"""
+
 import threading
 import time
 from datetime import datetime
@@ -11,15 +16,13 @@ import os
 from dotenv import load_dotenv
 import matplotlib
 import speech_recognition as sr
-import soundfile as sf
-# ОБЯЗАТЕЛЬНО ДЛЯ НОРМАЛЬНОЙ РАБОТЫ ГС https://phoenixnap.com/kb/ffmpeg-windows и перезагрузить комп ещё
 
-#подключение неинтерактивного бэкэнда для matplotlib
+# подключение неинтерактивного бэкэнда для matplotlib
 matplotlib.use('agg')
 
 # подключение к боту с помощью спрятанного в .env токена
 load_dotenv()
-token=os.getenv('TOKEN') #'7044459383:AAGE-K-UOkT-gZocdJ6tXGb4rk7VNYpH4BM'
+token=os.getenv('TOKEN')
 bot=telebot.TeleBot(token)
 
 # в tasks хранятся все данные о задах всех пользователей, чтобы потом было легче их доставать
@@ -29,8 +32,13 @@ for i in files:
     with open('users/'+str(i)) as f:
         tasks[i]=json.load(f)
 
-# основная клавиатура для пользователя
+# удаление файлов из папки tmp, чтобы исключить ошибки
+files = [f for f in os.listdir('tmp/')]
+for i in files:
+    os.remove('tmp/'+i)
+
 def default_markup():
+    """Возвращает основную клавиатуру для пользователя"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_add = types.KeyboardButton('Добавить')
     btn_del = types.KeyboardButton('Удалить')
@@ -40,31 +48,32 @@ def default_markup():
     markup.add(btn_add, btn_del,btn_done,btn_view, btn_graph)
     return markup
 
-# шаблон для создания новой клавиатуры
-def new_markup(texts):
+def new_markup(texts: list):
+    """Возвращает клавиатуру для пользователя с кнопками, надписями на которых являются строки в списке"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for i in texts:
         markup.add(types.KeyboardButton(i))
     return markup
 
-# основная команда /start и приветственное сообщение
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    bot.send_message(message.chat.id, f"Привет, {message.from_user.first_name}! Этот бот может помочь тебе в организации школьных дел. Напиши /help, чтобы узнать подробнее о командах.", reply_markup=default_markup())
+    """основная команда /start и приветственное сообщение"""
+    bot.send_message(message.chat.id, f"Привет, {message.from_user.first_name}! Этот бот может помочь тебе в организации школьных дел. "+\
+    "Напиши /help, чтобы узнать подробнее о командах.", reply_markup=default_markup())
 
-# команда /help
 @bot.message_handler(commands=['help'])
 def start_message(message):
+    """команда /help"""
     bot.send_message(message.chat.id,"Добавить — добавить задачу в список невыполненнх дел;\nУдалить — удалить любое упоминание о задаче;\nОтметить выполненным — перенести задачу в список выполненных задач;\nПосмотреть задачи — посмотреть список активных задач;\nПосмотреть график продуктивности — посмотреть количество и даты уже выполненных в этом месяце задач.\n\nКроме того ты можешь записать голосовое сообщение для быстрой записи нового дела.", reply_markup=default_markup())
 
-# команда добавления задачи
 @bot.message_handler(func= lambda x:  x.text=='Добавить')
 def add_task(message):
+    """команда добавления задачи"""
     msg=bot.send_message(message.chat.id,"Напиши название задачи", reply_markup=new_markup(['Отмена']))
     bot.register_next_step_handler(msg, task_name_add)
 
-# добавление задачи: принимает название и запрашивает тип задачи
 def task_name_add(message):
+    """добавление задачи: принимает название и запрашивает тип задачи"""
     name = message.text
     if name == 'Отмена':
         bot.send_message(message.chat.id, "Добавление задачи отменено", reply_markup=default_markup())
@@ -73,8 +82,8 @@ def task_name_add(message):
                          reply_markup=new_markup(['Домашка', 'Кружки', 'Личное', 'Отмена']))
     bot.register_next_step_handler(msg, task_type, name)
 
-# добавление задачи: принимает тип и запрашивает важность задачи
 def task_type(message, name):
+    """добавление задачи: принимает тип и запрашивает важность задачи"""
     type_ = message.text
     if type_ == 'Отмена':
         bot.send_message(message.chat.id, "Добавление задачи отменено", reply_markup=default_markup())
@@ -83,8 +92,8 @@ def task_type(message, name):
                          reply_markup=new_markup(['Да', 'Нет', 'Отмена']))
     bot.register_next_step_handler(msg, task_priority, name, type_)
 
-# добавление задачи: принимает важность и запрашивает дедлайн задачи
 def task_priority(message, name, type_):
+    """добавление задачи: принимает важность и запрашивает дедлайн задачи"""
     priority = message.text
     if priority == 'Отмена':
         bot.send_message(message.chat.id, "Добавление задачи отменено", reply_markup=default_markup())
@@ -93,8 +102,8 @@ def task_priority(message, name, type_):
                          reply_markup=new_markup(['Нет', 'Отмена']))
     bot.register_next_step_handler(msg, task_deadline, name, type_, priority)
 
-# добавление задачи: принимает дедлайн задачи и записывает всё её данные в личный json файл пользователя
 def task_deadline(message, name, type_, priority):
+    """добавление задачи: принимает дедлайн задачи и записывает всё её данные в личный json файл пользователя"""
     deadline = message.text.lower()
     if deadline == 'Отмена':
         bot.send_message(message.chat.id, "Добавление задачи отменено", reply_markup=default_markup())
@@ -108,6 +117,9 @@ def task_deadline(message, name, type_, priority):
             elif len(time_temp) == 1:
                 time = [int(x) for x in time_temp[0].split('.')]
                 deadline = datetime(time[2], time[1], time[0], 12, 0).timestamp()
+            else:
+                deadline = 'нет'
+                bot.send_message(message.chat.id, "Неправильный формат даты. У этой задачи не будет дедлайна.", reply_markup=default_markup())
         except:
             bot.send_message(message.chat.id, "Неправильный формат даты", reply_markup=default_markup())
             return
@@ -118,14 +130,14 @@ def task_deadline(message, name, type_, priority):
         json.dump(tasks[message.chat.id], f, ensure_ascii=False)
     bot.send_message(message.chat.id, "Готово!", reply_markup=default_markup())
 
-# команда удаления задачи
 @bot.message_handler(func= lambda x:  x.text=='Удалить')
 def del_task(message):
+    """команда удаления задачи"""
     msg=bot.send_message(message.chat.id,"Напиши название задачи", reply_markup=new_markup(['Отмена']))
     bot.register_next_step_handler(msg, task_name_del)
 
-# удаление задачи: принимает название задачи и удаляет её из json файла пользователя
 def task_name_del(message):
+    """удаление задачи: принимает название задачи и удаляет её из json файла пользователя"""
     name = message.text
     if name == 'Отмена':
         bot.send_message(message.chat.id, "Удаление задачи отменено", reply_markup=default_markup())
@@ -138,14 +150,14 @@ def task_name_del(message):
     except:
         bot.send_message(message.chat.id, "Такой задачи нет", reply_markup=default_markup())
 
-# команда изменения статуса задачи на выполненную
 @bot.message_handler(func= lambda x:  x.text=='Отметить выполненным')
 def mark_task(message):
+    """команда изменения статуса задачи на выполненную"""
     msg=bot.send_message(message.chat.id,"Напиши название задачи", reply_markup=new_markup(['Отмена']))
     bot.register_next_step_handler(msg, task_name_mark)
 
-# изменение статуса задачи: принимает название задачи и меняет значиние done на её время выполнени в json файле пользователя
 def task_name_mark(message):
+    """изменение статуса задачи: принимает название задачи и меняет значение done на её время выполнения в json файле пользователя"""
     name = message.text
     if name == 'Отмена':
         bot.send_message(message.chat.id, "Выполнение фунции отменено", reply_markup=default_markup())
@@ -158,9 +170,9 @@ def task_name_mark(message):
     except:
         bot.send_message(message.chat.id, "Такой задачи нет", reply_markup=default_markup())
 
-# команда просмотра невыполненных задач пользователя
 @bot.message_handler(func= lambda x:  x.text=='Посмотреть задачи')
 def mark_task(message):
+    """команда просмотра невыполненных задач пользователя"""
     text='Ваши невыполненные задачи:\n'
     c=1
     for i in tasks[message.chat.id]:
@@ -171,9 +183,9 @@ def mark_task(message):
         text='Нет невыполненных задач'
     bot.send_message(message.chat.id, text, reply_markup=default_markup(), parse_mode='HTML')
 
-# команда, выводящая график по количеству выполненных задач и их дате в этом месяце
 @bot.message_handler(func= lambda x:  x.text=='Посмотреть график продуктивности')
 def graph_task(message):
+    """команда, выводящая график по количеству выполненных задач и их дате в этом месяце"""
     fig = plt.figure()
     month_ = datetime.now().month
     year = datetime.now().year
@@ -200,15 +212,15 @@ def graph_task(message):
         bot.send_photo(message.chat.id, f)
     os.remove(f'tmp/{message.chat.id}.png')
 
-# команда, принимающая и распознающая в текст голосовое сообщение пользователя
 rec = sr.Recognizer()
 @bot.message_handler(content_types=['voice'])
 def voice_add(message):
+    """команда, принимающая и распознающая в текст голосовое сообщение пользователя"""
     file_info = bot.get_file(message.voice.file_id)
     downloaded_file = bot.download_file(file_info.file_path)
     with open(f'tmp/{message.chat.id}.ogg', 'wb+')as f:
         f.write(downloaded_file)
-    os.system(f'ffmpeg -i tmp/{message.chat.id}.ogg tmp/{message.chat.id}.wav')
+    os.system(f'ffmpeg -i tmp/{message.chat.id}.ogg tmp/{message.chat.id}.wav -loglevel quiet')
     with sr.AudioFile(f'tmp/{message.chat.id}.wav') as f:
         audio = rec.listen(f)
         try:
@@ -220,8 +232,8 @@ def voice_add(message):
     os.remove(f'tmp/{message.chat.id}.wav')
     os.remove(f'tmp/{message.chat.id}.ogg')
 
-# распознование текста из голосового сообщения: записывает данные задачи в json файл пользователя
 def audio_add_confirm(message, text):
+    """распознование текста из голосового сообщения: записывает данные задачи в json файл пользователя"""
     answer = message.text
     if answer=='Да':
         tasks[message.chat.id][text] = {'type': 'Личное', 'priority': 'Нет',
@@ -235,8 +247,8 @@ def audio_add_confirm(message, text):
         bot.send_message(message.chat.id, f'Отменено',
                          reply_markup=default_markup())
 
-# функция, которая каждые 60 секунд проверяет дедлайны задач и отправляет напоминания пользователю
 def deadline_thread():
+    """функция, которая каждые 60 секунд проверяет дедлайны задач и отправляет напоминания пользователю"""
     while 1:
         time.sleep(60)
         for i in tasks:
