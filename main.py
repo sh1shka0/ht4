@@ -25,6 +25,9 @@ load_dotenv()
 token=os.getenv('TOKEN')
 bot=telebot.TeleBot(token)
 
+# список месяцев для исключения в команде с графиом
+months = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре']
+
 # в tasks хранятся все данные о задах всех пользователей, чтобы потом было легче их доставать
 tasks = defaultdict(dict)
 files = [int(f) for f in os.listdir('users/')]
@@ -185,11 +188,20 @@ def mark_task(message):
 
 @bot.message_handler(func= lambda x:  x.text=='Посмотреть график продуктивности')
 def graph_task(message):
-    """команда, выводящая график по количеству выполненных задач и их дате в этом месяце"""
+    """команда, запрашивающая месяц у пользователя, чтобы вывести график выполненных задач в этом месяце"""
+    msg=bot.send_message(message.chat.id,"Напиши месяц числом", reply_markup=new_markup(['Отмена']))
+    bot.register_next_step_handler(msg, tasks_month)
+
+def tasks_month(message):
+    """команда, выводящая график по количеству выполненных задач и их дате в введённом юзером месяце"""
     fig = plt.figure()
-    month_ = datetime.now().month
+    m=message.text
+    if not m.isdigit() or int(m)>12 or int(m)<1 or m=='Отмена':
+        bot.send_message(message.chat.id, "Введён неправильный формат", reply_markup=default_markup())
+        return
+    month_ = int(m)
     year = datetime.now().year
-    data = {i: 0 for i in range(31)}
+    data = {i: 0 for i in range(32)}
     c=1
     for i in tasks[message.chat.id]:
         if tasks[message.chat.id][i]['done']:
@@ -199,17 +211,17 @@ def graph_task(message):
                 data[day] +=1
                 c=0
     if c:
-        bot.send_message(message.chat.id, "Выполненных задач в этом месяце нет")
+        bot.send_message(message.chat.id, f"Выполненных задач в {months[int(m)-1]} нет", reply_markup=default_markup())
         return
     plt.bar(data.keys(),data.values(), figure=fig)
     plt.yticks(np.arange(0, max(data.values()) + 1, 1.0))
     plt.xticks(np.arange(0, 31, 2.0))
     plt.xlabel('Дни')
     plt.ylabel('Выполненные задачи')
-    plt.title('Выполненные задачи за этот месяц')
+    plt.title(f'Выполненные задачи за {months[int(m)-1]}')
     fig.savefig(f'tmp/{message.chat.id}.png')
     with open(f'tmp/{message.chat.id}.png', 'rb') as f:
-        bot.send_photo(message.chat.id, f)
+        bot.send_photo(message.chat.id, f, reply_markup=default_markup())
     os.remove(f'tmp/{message.chat.id}.png')
 
 rec = sr.Recognizer()
