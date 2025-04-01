@@ -26,7 +26,7 @@ token=os.getenv('TOKEN')
 bot=telebot.TeleBot(token)
 
 # список месяцев для исключения в команде с графиом
-months = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре']
+months = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь']
 
 # в tasks хранятся все данные о задах всех пользователей, чтобы потом было легче их доставать
 tasks = defaultdict(dict)
@@ -189,18 +189,25 @@ def mark_task(message):
 @bot.message_handler(func= lambda x:  x.text=='Посмотреть график продуктивности')
 def graph_task(message):
     """команда, запрашивающая месяц у пользователя, чтобы вывести график выполненных задач в этом месяце"""
-    msg=bot.send_message(message.chat.id,"Напиши месяц числом", reply_markup=new_markup(['Отмена']))
+    msg=bot.send_message(message.chat.id,"Напиши месяц и год в формате 'мм.гггг' или выбери этот месяц", reply_markup=new_markup(['Отмена', 'Этот месяц']))
     bot.register_next_step_handler(msg, tasks_month)
 
 def tasks_month(message):
     """команда, выводящая график по количеству выполненных задач и их дате в введённом юзером месяце"""
     fig = plt.figure()
-    m=message.text
-    if not m.isdigit() or int(m)>12 or int(m)<1 or m=='Отмена':
-        bot.send_message(message.chat.id, "Введён неправильный формат", reply_markup=default_markup())
+    msg=message.text
+    if msg == 'Отмена':
+        bot.send_message(message.chat.id, "Выполнение фунции отменено", reply_markup=default_markup())
         return
-    month_ = int(m)
-    year = datetime.now().year
+    if msg=='Этот месяц':
+        month_, year = datetime.now().month, datetime.now().year
+    else:
+        try:
+            s=msg.split('.')
+            month_, year = s[0], s[1]
+        except:
+            bot.send_message(message.chat.id, "Введён неправильный формат", reply_markup=default_markup())
+            return
     data = {i: 0 for i in range(32)}
     c=1
     for i in tasks[message.chat.id]:
@@ -211,14 +218,14 @@ def tasks_month(message):
                 data[day] +=1
                 c=0
     if c:
-        bot.send_message(message.chat.id, f"Выполненных задач в {months[int(m)-1]} нет", reply_markup=default_markup())
+        bot.send_message(message.chat.id, f"Выполненных задач за {months[int(month_)-1]} {year} года нет", reply_markup=default_markup())
         return
     plt.bar(data.keys(),data.values(), figure=fig)
     plt.yticks(np.arange(0, max(data.values()) + 1, 1.0))
     plt.xticks(np.arange(0, 31, 2.0))
     plt.xlabel('Дни')
     plt.ylabel('Выполненные задачи')
-    plt.title(f'Выполненные задачи за {months[int(m)-1]}')
+    plt.title(f'Выполненные задачи за {months[int(month_)-1]} {year} года')
     fig.savefig(f'tmp/{message.chat.id}.png')
     with open(f'tmp/{message.chat.id}.png', 'rb') as f:
         bot.send_photo(message.chat.id, f, reply_markup=default_markup())
